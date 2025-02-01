@@ -1,0 +1,24 @@
+
+// GPIO FOR MOTORS
+#define RIGHT_PWM_PIN_FRONT 25 //
+#define RIGHT_DIR_FRONT 26 //
+
+#define LEFT_PWM_PIN_FRONT 32 //
+#define LEFT_DIR_FRONT 33 //
+
+#define RIGHT_PWM_PIN_BACK 21 // TX0
+#define RIGHT_DIR_BACK 18 // RX0
+
+#define LEFT_PWM_PIN_BACK 1
+#define LEFT_DIR_BACK 3
+//
+
+// MOTOR CHANNELS: use for pwm
+#define RIGHT_CHANNEL 0
+#define LEFT_CHANNEL 1
+//
+
+// SERVO
+#define GRIPPER_SERVO 16
+#define ARM_SERVO 22
+//
