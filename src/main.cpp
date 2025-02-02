@@ -2,13 +2,21 @@
 #include <ESP32Servo.h>
 #include <Ps3Controller.h>
 
+// #define GET_MAC
+
+#ifndef GET_MAC
 // PINDEFS
 #include "car_pins"
 
-#define PWM_FREQUENCY 5000
-#define maxPwm 1023
+#define PWM_FREQUENCY 1000
+#define maxPwm 255
 
-#define DEBUG
+// COMPILE FLAGS
+// #define DEBUG
+#define MATCH
+// #define ALT_MAC
+//
+
 // ----------------- GLOBALS ----------------- //
 
 // MOTION
@@ -19,6 +27,8 @@ int rCap, lCap;
 void drive(float argy, float argw);
 void getSpeed(float valY, float valW);
 void setMotion();
+
+void rampMotion(); // ramp locomotion
 //
 
 // CONTROLLER
@@ -27,6 +37,8 @@ bool sFlag = 0;
 bool invertAxis = 0;
 bool startButton = 0;
 
+bool ramp = 0;
+
 void notify();
 //
 
@@ -34,6 +46,8 @@ void notify();
 Servo gripper, arm, halaw;
 
 int gripperAngle, armAngle;
+int tempAngle;
+bool direction, moving;
 //
 
 // TIMER
@@ -44,14 +58,15 @@ long debugTimer, currentMillis, pidTimer, startTimer;
 
 void setup()
 {
-    // Initialize the PS3 controller
-    Ps3.begin("00:1a:7d:da:71:15");
-    Ps3.attach(notify);
-
     Serial.begin(115200);
-
-    ledcSetup(RIGHT_CHANNEL, PWM_FREQUENCY, 8);
-    ledcSetup(LEFT_CHANNEL, PWM_FREQUENCY, 8);
+// Initialize the PS3 controller
+// #undef ALT_MAC
+#ifndef ALT_MAC
+    Ps3.begin("00:1a:7d:da:71:15");
+#else
+    Ps3.begin("ac:15:18:d6:45:fc");
+#endif
+    Ps3.attach(notify);
 
     pinMode(RIGHT_PWM_PIN_FRONT, OUTPUT);
     pinMode(RIGHT_DIR_FRONT, OUTPUT);
@@ -65,32 +80,33 @@ void setup()
     pinMode(LEFT_PWM_PIN_BACK, OUTPUT);
     pinMode(LEFT_DIR_BACK, OUTPUT);
 
+    ledcSetup(RIGHT_FRONT_CHANNEL, PWM_FREQUENCY, 8);
+    ledcSetup(LEFT_FRONT_CHANNEL, PWM_FREQUENCY, 8);
+    ledcSetup(RIGHT_BACK_CHANNEL, PWM_FREQUENCY, 8);
+    ledcSetup(LEFT_BACK_CHANNEL, PWM_FREQUENCY, 8);
+
     // Servo
-    gripper.attach(19);
-    arm.attach(22);
-    halaw.attach(16);
+    gripper.attach(GRIPPER_SERVO);
+    arm.attach(ARM_SERVO);
 
     // Inbuilt LED
     pinMode(2, OUTPUT);
 
-    analogWriteFrequency(PWM_FREQUENCY);
-    analogWriteResolution(8);
-
     // USE CHANNELS FOR PWM (ledcWrite) NOT PINS
-    ledcAttachPin(RIGHT_PWM_PIN_FRONT, RIGHT_CHANNEL);
-    ledcAttachPin(RIGHT_PWM_PIN_BACK, RIGHT_CHANNEL);
+    ledcAttachPin(RIGHT_PWM_PIN_FRONT, RIGHT_FRONT_CHANNEL);
+    ledcAttachPin(RIGHT_PWM_PIN_BACK, RIGHT_BACK_CHANNEL);
 
-    ledcAttachPin(LEFT_PWM_PIN_FRONT, LEFT_CHANNEL);
-    ledcAttachPin(LEFT_PWM_PIN_BACK, LEFT_CHANNEL);
+    ledcAttachPin(LEFT_PWM_PIN_FRONT, LEFT_FRONT_CHANNEL);
+    ledcAttachPin(LEFT_PWM_PIN_BACK, LEFT_BACK_CHANNEL);
 
     digitalWrite(RIGHT_PWM_PIN_BACK, 0);
     digitalWrite(LEFT_PWM_PIN_BACK, 0);
     digitalWrite(RIGHT_PWM_PIN_FRONT, 0);
     digitalWrite(LEFT_PWM_PIN_FRONT, 0);
 
-    pinMode(19, OUTPUT);
-    pinMode(16, OUTPUT);
-    pinMode(22, OUTPUT);
+    // pinMode(19, OUTPUT);
+    // pinMode(16, OUTPUT);
+    // pinMode(22, OUTPUT);
 
     // digitalWrite(RIGHT_DIR, 0);
     // digitalWrite(LEFT_DIR, 0);
@@ -102,77 +118,58 @@ void loop()
 {
     currentMillis = millis();
 
-    // #ifdef DEBUG
-    if (currentMillis - debugTimer > 1000) {
+#ifdef DEBUG
+    if (currentMillis - debugTimer > 300) {
         debugTimer = currentMillis;
-        // Serial.print("Y: ");
-        // Serial.print(stickY);
-        // Serial.print(" W: ");
-        // Serial.print(stickW);
-        // Serial.print(" R: ");
-        // Serial.print(rSpeed);
-        // Serial.print(" L: ");
-        // Serial.println(lSpeed);
 
         Serial.printf("rCap: %d, lCap: %d\n", rCap, lCap);
         Serial.print((rSpeed > 0 ? 0 : 1));
         Serial.print('\t');
         Serial.println((lSpeed > 0 ? 0 : 1));
-        Serial.printf("gripper: %d\n", gripperAngle);
+        Serial.printf("gripper: %d\tarm: %d", gripperAngle, armAngle);
     }
-    // #endif
-    // gripper.write(180);
-    // halaw.write(180);
-    // arm.write(180);
-
-    digitalWrite(19, 0);
-    digitalWrite(22, 0);
-    digitalWrite(16, 0);
-
-    delay(1000);
-
-    // gripper.write(0);
-    // halaw.write(0);
-    // arm.write(0);
-
-    digitalWrite(19, 1);
-    digitalWrite(22, 1);
-    digitalWrite(16, 1);
-    delay(1000);
+#endif
 
     if (Ps3.isConnected()) {
         if (startButton) {
             digitalWrite(2, HIGH);
 
-#ifndef SERV0_TEST
-            // for (int i = 0; i < 180; i++) {
-            //     gripper.write(i);
-            //     delay(10);
-            // }
-            // digitalWrite(GRIPPER_SERVO, 1);
+#ifdef SERV0_TEST
+            for (int i = 0; i < 180; i++) {
+                gripper.write(i);
+                delay(10);
+            }
+            digitalWrite(GRIPPER_SERVO, 1);
             gripper.write(180);
             delay(1000);
-            // for (int i = 180; i > 0; i--) {
-            //     gripper.write(i);
-            //     delay(10);
-            // digitalWrite(GRIPPER_SERVO, 0);
-            // }
+            for (int i = 180; i > 0; i--) {
+                gripper.write(i);
+                delay(10);
+                digitalWrite(GRIPPER_SERVO, 0);
+            }
             gripper.write(0);
-
             delay(1000);
-#endif
-            // gripper.write(gripperAngle);
-            drive(stickY, stickW);
 
-            getSpeed(valY, valW);
-            setMotion();
-#ifdef test
+            // if (invertAxis) {
+            //     if (moving) {
+            //         direction ? tempAngle++ : tempAngle--;
+            //         constrain(tempAngle, -90, 90);
+            //         gripper.write(tempAngle);
+            //     } else {
+            //         gripper.write(tempAngle);
+            //     }
+            // } else {
+
+            // }
+
+#endif
+#ifdef MOTOR_TEST
             // digitalWrite(LEFT_DIR_FRONT, 1);
-            // ledcWrite(LEFT_CHANNEL, 255);
+            // ledcWrite(LEFT_FRONT_CHANNEL, 255);
 
             // delay(2000);
             // digitalWrite(LEFT_DIR_FRONT, 1);
-            // ledcWrite(LEFT_CHANNEL, 255);
+            // ledcWrite(LEFT_FRONT_CHANNEL, 255);
 
             // delay(2000);
             // digitalWrite(RIGHT_DIR, 1);
@@ -181,15 +178,31 @@ void loop()
             // // digitalWrite(RIGHT_PWM_PIN, 1
             // // drive(100, 0);
             // ledcWrite(RIGHT_CHANNEL, 255);
-            // ledcWrite(LEFT_CHANNEL, 255);
+            // ledcWrite(LEFT_FRONT_CHANNEL, 255);
             // analogWrite(23, stickY);
             // analogWrite(LEFT_PWM_PIN, 250);
             // analogWrite(RIGHT_PWM_PIN, 250);
 #endif
+
+#ifdef MATCH
+            constrain(gripperAngle, -90, 90);
+
+            gripper.write(gripperAngle);
+            arm.write(armAngle);
+
+            drive(stickY, stickW);
+            getSpeed(valY, valW);
+
+            if (ramp) {
+                rampMotion();
+            } else {
+                setMotion();
+            }
+#endif
         } else {
             digitalWrite(2, LOW);
             // ledcWrite(RIGHT_CHANNEL, 0);
-            // ledcWrite(LEFT_CHANNEL, 0);
+            // ledcWrite(LEFT_FRONT_CHANNEL, 0);
             digitalWrite(RIGHT_PWM_PIN_BACK, 0);
             digitalWrite(LEFT_PWM_PIN_BACK, 0);
             digitalWrite(RIGHT_PWM_PIN_FRONT, 0);
@@ -222,14 +235,6 @@ void notify()
             stickY = 0;
     }
 
-    // if (abs(Ps3.event.analog_changed.button.l2) > 1) {
-    //     tempY = Ps3.event.analog_changed.button.l2;
-    //     map(tempY, 0, 255, 0, 128);
-    // } else if (abs(Ps3.event.analog_changed.button.r2) > 1) {
-    //     tempY2 = Ps3.event.analog_changed.button.r2;
-    //     map(tempY2, 0, 255, 0, -128);
-    // }
-
     // Right stick
     if (abs(Ps3.event.analog_changed.stick.rx) + abs(Ps3.event.analog_changed.stick.ry) > 2) {
         stickW = Ps3.data.analog.stick.rx;
@@ -239,25 +244,52 @@ void notify()
     // Select Button
     if (Ps3.event.button_down.select) {
         invertAxis = !invertAxis;
-        digitalWrite(23, invertAxis);
     }
 
-    // Shoulders for servo
+    // Gripper
     if (Ps3.event.button_down.l1) {
-        gripperAngle = 90;
+        gripperAngle += 15;
     }
 
     if (Ps3.event.button_down.r1) {
-        gripperAngle = -90;
+        gripperAngle -= 15;
     }
 
     if (Ps3.event.button_down.circle) {
-        gripperAngle = 0;
+        gripperAngle
+            = 0;
+    }
+    // Gripper
+
+    // if (Ps3.event.button_down.triangle) {
+    //     if (Ps3.event.button_down.r1)
+    //         direction = 1;
+    //     else if (Ps3.event.button_down.l1)
+    //         direction = 0;
+    //     moving = !moving;
+    // }
+
+    // Ramp mode
+    if (Ps3.event.button_down.cross) {
+        ramp = !ramp;
+    }
+    //
+
+    // Arm Servo
+    if (Ps3.event.button_down.up) {
+        // armAngle += 10;
+        armAngle = 60;
+        // constrain(armAngle, -90, 90);
     }
 
-    // stickY = tempY + tempY2;
+    if (Ps3.event.button_down.down) {
+        armAngle = 0;
+    }
+
+    // Arm
 }
 
+///////////////////////////////////////////////////////////////////////
 void drive(float argy, float argw)
 {
 
@@ -273,8 +305,8 @@ void drive(float argy, float argw)
 
 void getSpeed(float inY, float inW)
 {
-    rSpeed = (inY) + (inW);
-    lSpeed = (inY) - (inW);
+    rSpeed = (inY) - (inW);
+    lSpeed = (inY) + (inW);
 
     rCap = round(abs(rSpeed) * maxPwm);
     lCap = round(abs(lSpeed) * maxPwm);
@@ -288,6 +320,43 @@ void setMotion()
     digitalWrite(LEFT_DIR_FRONT, (lSpeed > 0 ? 0 : 1));
     digitalWrite(LEFT_DIR_BACK, (lSpeed > 0 ? 0 : 1));
 
-    ledcWrite(RIGHT_CHANNEL, rCap);
-    ledcWrite(LEFT_CHANNEL, lCap);
+    ledcWrite(RIGHT_FRONT_CHANNEL, rCap);
+    ledcWrite(LEFT_FRONT_CHANNEL, lCap);
+    ledcWrite(RIGHT_BACK_CHANNEL, rCap);
+    ledcWrite(LEFT_BACK_CHANNEL, lCap);
 }
+
+void rampMotion()
+{
+    digitalWrite(RIGHT_DIR_FRONT, (rSpeed > 0 ? 0 : 1));
+    digitalWrite(RIGHT_DIR_BACK, (rSpeed > 0 ? 0 : 1));
+
+    digitalWrite(LEFT_DIR_FRONT, (lSpeed > 0 ? 0 : 1));
+    digitalWrite(LEFT_DIR_BACK, (lSpeed > 0 ? 0 : 1));
+
+    ledcWrite(RIGHT_FRONT_CHANNEL, rCap);
+    ledcWrite(LEFT_FRONT_CHANNEL, lCap);
+    ledcWrite(RIGHT_BACK_CHANNEL, (int)(rCap / 2));
+    ledcWrite(LEFT_BACK_CHANNEL, (int)(lCap / 2));
+}
+///////////////////////////////////////////////////////////////////////
+#else
+
+#include "BluetoothSerial.h"
+#include "WiFi.h"
+
+void setup()
+{
+    Serial.begin(115200);
+    Serial.println("ESP32 Bluetooth MAC Address:");
+    Serial.println(WiFi.macAddress()); // Works for most cases
+    Serial.println("Alternate BT MAC:");
+    Serial.println(WiFi.softAPmacAddress()); // Try this if needed
+}
+
+void loop()
+{
+    // Nothing here, just print once
+}
+
+#endif
