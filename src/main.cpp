@@ -14,7 +14,7 @@
 // COMPILE FLAGS
 // #define DEBUG
 #define MATCH
-// #define ALT_MAC
+#define ALT_MAC
 //
 
 // ----------------- GLOBALS ----------------- //
