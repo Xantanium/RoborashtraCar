@@ -3,13 +3,26 @@
 #include <Ps3Controller.h>
 
 // #define GET_MAC
+/*
+
+    startButton = start,
+    select = invertAxis,
+    square = ramp,
+    left Trigger = gripper--,
+    right trigger = gripper++,
+    up = arm++,
+    down = arm--,
+
+    circle = gripper to 0,
+    left = arm to 0
+ */
 
 #ifndef GET_MAC
 // PINDEFS
 #include "car_pins"
 
 #define PWM_FREQUENCY 1000
-#define maxPwm 255
+#define maxPwm 125
 
 // COMPILE FLAGS
 // #define DEBUG
@@ -46,12 +59,12 @@ void notify();
 Servo gripper, arm, halaw;
 
 int gripperAngle, armAngle;
-int tempAngle;
+int tempAngle = 0;
 bool direction, moving;
 //
 
 // TIMER
-long debugTimer, currentMillis, pidTimer, startTimer;
+long debugTimer, currentMillis, pidTimer, startTimer, servoTimer;
 //
 
 // ------------------ SETUP ------------------ //
@@ -60,7 +73,7 @@ void setup()
 {
     Serial.begin(115200);
 // Initialize the PS3 controller
-// #undef ALT_MAC
+#undef ALT_MAC
 #ifndef ALT_MAC
     Ps3.begin("00:1a:7d:da:71:15");
 #else
@@ -87,6 +100,7 @@ void setup()
 
     // Servo
     gripper.attach(GRIPPER_SERVO);
+
     arm.attach(ARM_SERVO);
 
     // Inbuilt LED
@@ -103,13 +117,6 @@ void setup()
     digitalWrite(LEFT_PWM_PIN_BACK, 0);
     digitalWrite(RIGHT_PWM_PIN_FRONT, 0);
     digitalWrite(LEFT_PWM_PIN_FRONT, 0);
-
-    // pinMode(19, OUTPUT);
-    // pinMode(16, OUTPUT);
-    // pinMode(22, OUTPUT);
-
-    // digitalWrite(RIGHT_DIR, 0);
-    // digitalWrite(LEFT_DIR, 0);
 }
 
 // ------------------ LOOP ------------------ //
@@ -117,16 +124,16 @@ void setup()
 void loop()
 {
     currentMillis = millis();
-
+#define DEBUG
 #ifdef DEBUG
     if (currentMillis - debugTimer > 300) {
         debugTimer = currentMillis;
 
-        Serial.printf("rCap: %d, lCap: %d\n", rCap, lCap);
-        Serial.print((rSpeed > 0 ? 0 : 1));
-        Serial.print('\t');
-        Serial.println((lSpeed > 0 ? 0 : 1));
-        Serial.printf("gripper: %d\tarm: %d", gripperAngle, armAngle);
+        // Serial.printf("rCap: %d, lCap: %d\n", rCap, lCap);
+        // Serial.print((rSpeed > 0 ? 0 : 1));
+        // Serial.print('\t');
+        // Serial.println((lSpeed > 0 ? 0 : 1));
+        Serial.printf("gripper: %d\tarm: %d\n", gripperAngle, armAngle);
     }
 #endif
 
@@ -185,10 +192,19 @@ void loop()
 #endif
 
 #ifdef MATCH
-            constrain(gripperAngle, -90, 90);
+            // constrain(gripperAngle, -90, 90);
 
             gripper.write(gripperAngle);
-            arm.write(armAngle);
+
+            if (((currentMillis - servoTimer) > 5) && (abs(tempAngle - armAngle) > 0)) {
+
+                if (tempAngle == armAngle)
+                    arm.write(armAngle);
+
+                tempAngle < armAngle ? tempAngle++ : tempAngle--;
+                arm.write(tempAngle);
+                servoTimer = currentMillis;
+            }
 
             drive(stickY, stickW);
             getSpeed(valY, valW);
@@ -203,16 +219,17 @@ void loop()
             digitalWrite(2, LOW);
             // ledcWrite(RIGHT_CHANNEL, 0);
             // ledcWrite(LEFT_FRONT_CHANNEL, 0);
-            digitalWrite(RIGHT_PWM_PIN_BACK, 0);
-            digitalWrite(LEFT_PWM_PIN_BACK, 0);
-            digitalWrite(RIGHT_PWM_PIN_FRONT, 0);
-            digitalWrite(LEFT_PWM_PIN_FRONT, 0);
+            ledcWrite(RIGHT_BACK_CHANNEL, 0);
+            ledcWrite(RIGHT_FRONT_CHANNEL, 0);
+            ledcWrite(LEFT_BACK_CHANNEL, 0);
+            ledcWrite(LEFT_FRONT_CHANNEL, 0);
         }
     } else {
-        digitalWrite(RIGHT_PWM_PIN_BACK, 0);
-        digitalWrite(LEFT_PWM_PIN_BACK, 0);
-        digitalWrite(RIGHT_PWM_PIN_FRONT, 0);
-        digitalWrite(LEFT_PWM_PIN_FRONT, 0);
+        digitalWrite(2, LOW);
+        ledcWrite(RIGHT_BACK_CHANNEL, 0);
+        ledcWrite(RIGHT_FRONT_CHANNEL, 0);
+        ledcWrite(LEFT_BACK_CHANNEL, 0);
+        ledcWrite(LEFT_FRONT_CHANNEL, 0);
     }
 }
 
@@ -226,67 +243,49 @@ void notify()
         Serial.println(startButton);
     }
 
-    // int tempY, tempY2;
+    // Select Button
+    if (Ps3.event.button_down.select) {
+        invertAxis = !invertAxis;
+    }
 
-    // JOYSTICK
+    // Ramp mode
+    if (Ps3.event.button_down.square) {
+        ramp = !ramp;
+    }
+
+    // Left stick (Y)
     if (abs(Ps3.event.analog_changed.stick.ly) > 1) {
         stickY = Ps3.data.analog.stick.ly;
         if (stickY < 30 && stickY > -30)
             stickY = 0;
     }
 
-    // Right stick
+    // Right stick (W)
     if (abs(Ps3.event.analog_changed.stick.rx) + abs(Ps3.event.analog_changed.stick.ry) > 2) {
         stickW = Ps3.data.analog.stick.rx;
         if (stickW < 30 && stickW > -30)
             stickW = 0;
     }
-    // Select Button
-    if (Ps3.event.button_down.select) {
-        invertAxis = !invertAxis;
-    }
-
-    // Gripper
-    if (Ps3.event.button_down.l1) {
-        gripperAngle += 15;
-    }
-
-    if (Ps3.event.button_down.r1) {
-        gripperAngle -= 15;
-    }
-
-    if (Ps3.event.button_down.circle) {
-        gripperAngle
-            = 0;
-    }
-    // Gripper
-
-    // if (Ps3.event.button_down.triangle) {
-    //     if (Ps3.event.button_down.r1)
-    //         direction = 1;
-    //     else if (Ps3.event.button_down.l1)
-    //         direction = 0;
-    //     moving = !moving;
-    // }
-
-    // Ramp mode
-    if (Ps3.event.button_down.cross) {
-        ramp = !ramp;
-    }
-    //
 
     // Arm Servo
     if (Ps3.event.button_down.up) {
-        // armAngle += 10;
-        armAngle = 60;
-        // constrain(armAngle, -90, 90);
+        armAngle = 100;
+    } else if (Ps3.event.button_down.left) {
+        armAngle = 50;
+    } else if (Ps3.event.button_down.down) {
+        armAngle = 2;
     }
-
-    if (Ps3.event.button_down.down) {
-        armAngle = 0;
-    }
-
     // Arm
+
+    // Gripper
+    if (Ps3.event.button_down.r2) {
+        gripperAngle += 10;
+    } else if (Ps3.event.button_down.l2) {
+        gripperAngle -= 10;
+    } else if (Ps3.event.button_down.circle) {
+        gripperAngle = 0;
+    }
+    // Gripper
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -305,9 +304,8 @@ void drive(float argy, float argw)
 
 void getSpeed(float inY, float inW)
 {
-    rSpeed = (inY) - (inW);
-    lSpeed = (inY) + (inW);
-
+    rSpeed = (inY) - (0.5 * inW);
+    lSpeed = (inY) + (0.5 * inW);
     rCap = round(abs(rSpeed) * maxPwm);
     lCap = round(abs(lSpeed) * maxPwm);
 }

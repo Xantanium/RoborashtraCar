@@ -21,6 +21,6 @@
 //
 
 // SERVO
-#define GRIPPER_SERVO 16
-#define ARM_SERVO 22
+#define GRIPPER_SERVO 22
+#define ARM_SERVO 16
 //
