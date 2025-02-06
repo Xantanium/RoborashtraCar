@@ -39,9 +39,7 @@ int rCap, lCap;
 
 void drive(float argy, float argw);
 void getSpeed(float valY, float valW);
-void setMotion();
-
-void rampMotion(); // ramp locomotion
+void setMotion(); // handles both traction mode and normal mode
 //
 
 // CONTROLLER
@@ -56,7 +54,7 @@ void notify();
 //
 
 // SERVO
-Servo gripper, arm, halaw;
+Servo gripper, arm;
 
 int gripperAngle, armAngle;
 int tempAngle = 0;
@@ -207,13 +205,9 @@ void loop()
             }
 
             drive(stickY, stickW);
-            getSpeed(valY, valW);
 
-            if (ramp) {
-                rampMotion();
-            } else {
-                setMotion();
-            }
+            getSpeed(valY, valW);
+            setMotion();
 #endif
         } else {
             digitalWrite(2, LOW);
@@ -304,8 +298,13 @@ void drive(float argy, float argw)
 
 void getSpeed(float inY, float inW)
 {
-    rSpeed = (inY) - (0.5 * inW);
-    lSpeed = (inY) + (0.5 * inW);
+#define SLOW_W
+#ifdef SLOW_W
+    inW /= 2;
+#endif
+
+    rSpeed = (inY) - (inW);
+    lSpeed = (inY) + (inW);
     rCap = round(abs(rSpeed) * maxPwm);
     lCap = round(abs(lSpeed) * maxPwm);
 }
@@ -320,23 +319,16 @@ void setMotion()
 
     ledcWrite(RIGHT_FRONT_CHANNEL, rCap);
     ledcWrite(LEFT_FRONT_CHANNEL, lCap);
-    ledcWrite(RIGHT_BACK_CHANNEL, rCap);
-    ledcWrite(LEFT_BACK_CHANNEL, lCap);
+
+    if (ramp) {
+        ledcWrite(RIGHT_BACK_CHANNEL, (int)(rCap / 2));
+        ledcWrite(LEFT_BACK_CHANNEL, (int)(lCap / 2));
+    } else {
+        ledcWrite(RIGHT_BACK_CHANNEL, rCap);
+        ledcWrite(LEFT_BACK_CHANNEL, lCap);
+    }
 }
 
-void rampMotion()
-{
-    digitalWrite(RIGHT_DIR_FRONT, (rSpeed > 0 ? 0 : 1));
-    digitalWrite(RIGHT_DIR_BACK, (rSpeed > 0 ? 0 : 1));
-
-    digitalWrite(LEFT_DIR_FRONT, (lSpeed > 0 ? 0 : 1));
-    digitalWrite(LEFT_DIR_BACK, (lSpeed > 0 ? 0 : 1));
-
-    ledcWrite(RIGHT_FRONT_CHANNEL, rCap);
-    ledcWrite(LEFT_FRONT_CHANNEL, lCap);
-    ledcWrite(RIGHT_BACK_CHANNEL, (int)(rCap / 2));
-    ledcWrite(LEFT_BACK_CHANNEL, (int)(lCap / 2));
-}
 ///////////////////////////////////////////////////////////////////////
 #else
 
